@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}SSH Keys - {{ panel_name }}{% endblock %}
+{% block header_title %}SSH Keys{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}" class="breadcrumb-item">Dashboard</a>
+  <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+  <span class="breadcrumb-item active">SSH Keys</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <h2 style="font-size:1.2rem;margin-bottom:.25rem"><i class="fas fa-key" style="color:var(--accent-warning)"></i> SSH Keys</h2>
+      <p style="color:var(--text-muted);font-size:.875rem">Manage your public keys for passwordless SSH access</p>
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('addModal').style.display='flex'">
+      <i class="fas fa-plus"></i> Add Key
+    </button>
+  </div>
+</div>
+
+{% if ssh_keys %}
+<div style="display:flex;flex-direction:column;gap:1rem">
+  {% for key in ssh_keys %}
+  <div class="card" style="padding:1.25rem 1.5rem">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;margin-bottom:.3rem"><i class="fas fa-key" style="color:var(--accent-warning);margin-right:.4rem"></i>{{ key.name }}</div>
+        <div style="font-size:.72rem;font-family:monospace;color:var(--text-muted);word-break:break-all;padding:.4rem .6rem;background:var(--bg-inset);border-radius:6px;margin-bottom:.4rem">{{ key.fingerprint }}</div>
+        <div style="font-size:.72rem;color:var(--text-muted)">Added {{ key.created_at[:10] }}</div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="deleteKey({{ key.id }})"><i class="fas fa-trash"></i></button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:3rem">
+  <i class="fas fa-key" style="font-size:2.5rem;color:var(--text-muted);margin-bottom:1rem;display:block"></i>
+  <p style="color:var(--text-muted)">No SSH keys yet. Add one to enable key-based login.</p>
+</div>
+{% endif %}
+
+<div id="addModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+  <div class="card" style="width:100%;max-width:520px;padding:2rem">
+    <h3 style="margin-bottom:1.5rem"><i class="fas fa-key"></i> Add SSH Key</h3>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Key Name</label>
+      <input id="keyName" type="text" placeholder="My Laptop" style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+    </div>
+    <div style="margin-bottom:1.5rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Public Key</label>
+      <textarea id="pubKey" rows="4" placeholder="ssh-rsa AAAA... or ssh-ed25519 AAAA..." style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary);font-family:monospace;font-size:.78rem;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:.75rem">
+      <button class="btn btn-primary" style="flex:1" onclick="addKey()">Add Key</button>
+      <button class="btn btn-outline" onclick="document.getElementById('addModal').style.display='none'">Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+async function addKey(){
+  const name=document.getElementById('keyName').value.trim();
+  const pub=document.getElementById('pubKey').value.trim();
+  if(!name||!pub){alert('Fill in all fields');return;}
+  const r=await fetch('/ssh-keys/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,public_key:pub})});
+  const d=await r.json();
+  if(d.success){location.reload();}else{alert(d.error||'Failed');}
+}
+async function deleteKey(id){
+  if(!confirm('Delete this SSH key?'))return;
+  const r=await fetch(`/ssh-keys/${id}/delete`,{method:'DELETE'});
+  const d=await r.json();
+  if(d.success)location.reload();else alert(d.error||'Failed');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Snapshots - {{ panel_name }}{% endblock %}
+{% block header_title %}VPS Snapshots{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}" class="breadcrumb-item">Dashboard</a>
+  <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+  <span class="breadcrumb-item active">Snapshots</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <h2 style="font-size:1.2rem;margin-bottom:.25rem"><i class="fas fa-camera" style="color:var(--accent-primary)"></i> Snapshots</h2>
+      <p style="color:var(--text-muted);font-size:.875rem">Point-in-time backups of your VPS</p>
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='flex'">
+      <i class="fas fa-plus"></i> New Snapshot
+    </button>
+  </div>
+</div>
+
+{% if snapshots %}
+<div class="grid grid-1" style="gap:1rem">
+  {% for snap in snapshots %}
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1rem 1.5rem">
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="width:42px;height:42px;border-radius:10px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;color:var(--accent-primary)">
+        <i class="fas fa-camera"></i>
+      </div>
+      <div>
+        <div style="font-weight:600">{{ snap.name }}</div>
+        <div style="font-size:.75rem;color:var(--text-muted)">{{ snap.container_name }} &nbsp;·&nbsp; {{ snap.created_at[:16].replace('T',' ') }}</div>
+        {% if snap.description %}<div style="font-size:.78rem;color:var(--text-secondary);margin-top:.2rem">{{ snap.description }}</div>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn btn-sm btn-success" onclick="restoreSnap({{ snap.id }}, {{ snap.vps_id }})"><i class="fas fa-undo"></i> Restore</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteSnap({{ snap.id }}, {{ snap.vps_id }})"><i class="fas fa-trash"></i></button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:3rem">
+  <i class="fas fa-camera" style="font-size:2.5rem;color:var(--text-muted);margin-bottom:1rem;display:block"></i>
+  <p style="color:var(--text-muted)">No snapshots yet. Create one to protect your VPS data.</p>
+</div>
+{% endif %}
+
+<!-- Create Modal -->
+<div id="createModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+  <div class="card" style="width:100%;max-width:440px;padding:2rem">
+    <h3 style="margin-bottom:1.5rem"><i class="fas fa-camera"></i> Create Snapshot</h3>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Select VPS</label>
+      <select id="snapVpsId" style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+        {% for vps in user_vps %}<option value="{{ vps.id }}">{{ vps.container_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Name</label>
+      <input id="snapName" type="text" placeholder="my-snapshot" style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+    </div>
+    <div style="margin-bottom:1.5rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Description (optional)</label>
+      <input id="snapDesc" type="text" placeholder="Before major update..." style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+    </div>
+    <div style="display:flex;gap:.75rem">
+      <button class="btn btn-primary" style="flex:1" onclick="createSnap()">Create</button>
+      <button class="btn btn-outline" onclick="document.getElementById('createModal').style.display='none'">Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+async function createSnap(){
+  const vps=document.getElementById('snapVpsId').value;
+  const name=document.getElementById('snapName').value.trim();
+  const desc=document.getElementById('snapDesc').value.trim();
+  if(!name){alert('Enter a name');return;}
+  const r=await fetch(`/vps/${vps}/snapshots/create`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,description:desc})});
+  const d=await r.json();
+  if(d.success){location.reload();}else{alert(d.error||'Failed');}
+}
+async function restoreSnap(snapId,vpsId){
+  if(!confirm('Restore this snapshot? Current state will be replaced.'))return;
+  const r=await fetch(`/vps/${vpsId}/snapshots/${snapId}/restore`,{method:'POST'});
+  const d=await r.json();
+  alert(d.success?'Restored successfully':d.error||'Failed');
+  if(d.success)location.reload();
+}
+async function deleteSnap(snapId,vpsId){
+  if(!confirm('Delete this snapshot?'))return;
+  const r=await fetch(`/vps/${vpsId}/snapshots/${snapId}/delete`,{method:'DELETE'});
+  const d=await r.json();
+  if(d.success)location.reload();else alert(d.error||'Failed');
+}
+</script>
+{% endblock %}

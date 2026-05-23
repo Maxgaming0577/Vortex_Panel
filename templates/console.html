@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Console — {{ vps.container_name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050709;--surface:#0d1117;--surface2:#161b22;--surface3:#21262d;
+  --border:#30363d;--accent:#58a6ff;--accent2:#3fb950;--warn:#d29922;--danger:#f85149;
+  --text:#e6edf3;--muted:#8b949e;--mono:'Space Mono',monospace;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;display:flex;flex-direction:column}
+
+/* ── TOPBAR ── */
+.topbar{
+  height:44px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:10px;flex-shrink:0;
+  user-select:none;
+}
+.tb-vps{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.78rem}
+.tb-dot{width:8px;height:8px;border-radius:50%;background:#484f58;flex-shrink:0;transition:background .3s,box-shadow .3s}
+.tb-dot.on{background:var(--accent2);box-shadow:0 0 6px var(--accent2)}
+.tb-dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+.tb-name{color:var(--text);font-weight:700;font-size:.8rem}
+.tb-os{color:var(--muted);font-size:.72rem}
+.tb-sep{color:var(--border);margin:0 4px}
+.tb-status{font-size:.72rem;color:var(--muted);transition:color .3s}
+.tb-status.connected{color:var(--accent2)}
+.tb-status.error{color:var(--danger)}
+.tb-status.connecting{color:var(--warn)}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.tb-btn{
+  background:var(--surface3);border:1px solid var(--border);color:var(--muted);
+  border-radius:6px;padding:3px 10px;font-size:.72rem;cursor:pointer;
+  font-family:'Sora',sans-serif;transition:all .15s;display:flex;align-items:center;gap:5px
+}
+.tb-btn:hover{background:#2d333b;color:var(--text);border-color:#58a6ff44}
+.tb-btn.danger:hover{background:#3d1212;border-color:var(--danger);color:var(--danger)}
+.tb-btn svg{width:12px;height:12px;fill:currentColor}
+
+/* ── MAIN LAYOUT ── */
+.main{flex:1;display:flex;overflow:hidden;position:relative}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:260px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;transition:width .25s;overflow:hidden
+}
+.sidebar.collapsed{width:0;border:none}
+.sidebar-section{padding:12px 14px 6px;font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border)}
+.cred-form{padding:14px}
+.cf-label{font-size:.72rem;color:var(--muted);margin-bottom:4px;display:block}
+.cf-input{
+  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;color:var(--text);font-family:var(--mono);font-size:.78rem;outline:none;
+  transition:border-color .2s;margin-bottom:8px
+}
+.cf-input:focus{border-color:var(--accent)}
+.cf-input::placeholder{color:#3d444d}
+.cf-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cf-connect{
+  width:100%;margin-top:4px;background:var(--accent);border:none;color:#000;
+  border-radius:6px;padding:8px;font-size:.8rem;font-weight:700;cursor:pointer;
+  font-family:'Sora',sans-serif;transition:all .2s
+}
+.cf-connect:hover{background:#79c0ff}
+.cf-connect:disabled{opacity:.4;cursor:not-allowed}
+.cf-connect.spinner-active{position:relative;color:transparent}
+.cf-connect.spinner-active::after{
+  content:'';position:absolute;inset:0;margin:auto;width:14px;height:14px;
+  border:2px solid rgba(0,0,0,.3);border-top-color:#000;border-radius:50%;
+  animation:spin .6s linear infinite
+}
+.cf-divider{height:1px;background:var(--border);margin:10px 0}
+.cf-saved-title{font-size:.68rem;color:var(--muted);margin-bottom:6px}
+.cf-saved-item{
+  background:var(--surface3);border:1px solid var(--border);border-radius:6px;
+  padding:6px 10px;margin-bottom:5px;cursor:pointer;transition:all .15s
+}
+.cf-saved-item:hover{border-color:var(--accent);background:#1c2128}
+.cf-saved-item .si-host{font-size:.75rem;font-family:var(--mono);color:var(--text)}
+.cf-saved-item .si-user{font-size:.65rem;color:var(--muted)}
+.cf-save-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.cf-save-check{accent-color:var(--accent)}
+.cf-save-label{font-size:.72rem;color:var(--muted)}
+
+/* info panel */
+.info-panel{padding:10px 14px;flex:1;overflow-y:auto}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #21262d}
+.info-key{font-size:.72rem;color:var(--muted)}
+.info-val{font-size:.72rem;font-family:var(--mono);color:var(--text)}
+.info-val.copy-me{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+.info-val.copy-me:hover{color:var(--accent)}
+
+/* copy toast */
+.copy-toast{
+  position:fixed;bottom:50px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:#1c2128;border:1px solid var(--accent);color:var(--accent);
+  padding:6px 16px;border-radius:20px;font-size:.75rem;opacity:0;
+  transition:all .3s;pointer-events:none;z-index:999
+}
+.copy-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── TERMINAL AREA ── */
+.term-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.term-tabs{
+  height:32px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:2px;flex-shrink:0
+}
+.term-tab{
+  padding:4px 14px;font-size:.72rem;border-radius:4px 4px 0 0;cursor:pointer;
+  color:var(--muted);border:1px solid transparent;border-bottom:none;transition:all .15s
+}
+.term-tab.active{background:var(--bg);color:var(--text);border-color:var(--border)}
+.term-tab:not(.active):hover{background:var(--surface3);color:var(--text)}
+#terminal-container{flex:1;background:#0d1117;padding:4px 0 0 6px;overflow:hidden}
+.xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:#30363d #0d1117}
+.xterm .xterm-viewport::-webkit-scrollbar{width:6px}
+.xterm .xterm-viewport::-webkit-scrollbar-track{background:#0d1117}
+.xterm .xterm-viewport::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+
+/* disconnected overlay */
+.dc-overlay{
+  position:absolute;inset:0;background:rgba(5,7,9,.88);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;z-index:100;
+  transition:opacity .25s
+}
+.dc-overlay.hidden{opacity:0;pointer-events:none}
+.dc-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:2rem;max-width:320px;text-align:center
+}
+.dc-icon{font-size:2.5rem;margin-bottom:.75rem}
+.dc-title{font-size:1rem;font-weight:600;margin-bottom:.4rem;color:var(--text)}
+.dc-sub{font-size:.8rem;color:var(--muted);margin-bottom:1.2rem}
+.dc-btn{
+  background:var(--accent);border:none;color:#000;border-radius:8px;
+  padding:8px 24px;font-size:.85rem;font-weight:700;cursor:pointer;
+  font-family:'Sora',sans-serif
+}
+.dc-btn:hover{background:#79c0ff}
+
+/* ── FOOTER ── */
+.footer{
+  height:26px;background:var(--surface);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 14px;gap:20px;flex-shrink:0
+}
+.fhint{font-size:.65rem;color:#484f58;display:flex;align-items:center;gap:5px}
+.fhint kbd{
+  background:var(--surface3);border:1px solid var(--border);border-radius:3px;
+  padding:0 4px;font-size:.62rem;font-family:var(--mono)
+}
+.fstat{margin-left:auto;font-size:.65rem;font-family:var(--mono);color:#484f58}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <span class="tb-dot" id="statusDot"></span>
+  <span class="tb-name">{{ vps.container_name }}</span>
+  <span class="tb-sep">·</span>
+  <span class="tb-os">{{ vps.os_version or 'Linux' }}</span>
+  <span class="tb-sep">·</span>
+  <span class="tb-status" id="statusText">Disconnected</span>
+  <div class="tb-right">
+    <button class="tb-btn" onclick="toggleSidebar()" title="Toggle credentials panel">
+      <svg viewBox="0 0 16 16"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg>
+      Panel
+    </button>
+    <button class="tb-btn" onclick="clearTerm()" title="Clear terminal">
+      <svg viewBox="0 0 16 16"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+      Clear
+    </button>
+    <button class="tb-btn" onclick="toggleFullscreen()">
+      <svg viewBox="0 0 16 16"><path d="M1.5 1h4a.5.5 0 0 1 0 1H2v3.5a.5.5 0 0 1-1 0V1.5A.5.5 0 0 1 1.5 1zm12 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V2h-3.5a.5.5 0 0 1 0-1h4zm-12 12a.5.5 0 0 1 .5-.5H5.5a.5.5 0 0 1 0 1H2v-3.5a.5.5 0 0 1 1 0V13h3.5a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm12 0a.5.5 0 0 1-.5.5h-4a.5.5 0 0 1 0-1H14v-3.5a.5.5 0 0 1 1 0v4z"/></svg>
+      Fullscreen
+    </button>
+    <button class="tb-btn danger" onclick="exitConsole()">
+      <svg viewBox="0 0 16 16"><path d="M6 12.5a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v2a.5.5 0 0 1-1 0v-2A1.5 1.5 0 0 1 6.5 2h8A1.5 1.5 0 0 1 16 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 5 12.5v-2a.5.5 0 0 1 1 0v2z"/><path d="M.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L1.707 7.5H10.5a.5.5 0 0 1 0 1H1.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3z"/></svg>
+      Exit
+    </button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-section">SSH Connection</div>
+    <div class="cred-form">
+      <label class="cf-label">Host / IP</label>
+      <input class="cf-input" id="cfHost" placeholder="{{ vps_ip or '0.0.0.0' }}" value="{{ vps_ip or '' }}">
+
+      <div class="cf-row">
+        <div>
+          <label class="cf-label">Port</label>
+          <input class="cf-input" id="cfPort" type="number" value="22" min="1" max="65535">
+        </div>
+        <div>
+          <label class="cf-label">Username</label>
+          <input class="cf-input" id="cfUser" value="root">
+        </div>
+      </div>
+
+      <label class="cf-label">Password</label>
+      <input class="cf-input" id="cfPass" type="password" placeholder="••••••••" autocomplete="off">
+
+      <div class="cf-save-row">
+        <input type="checkbox" class="cf-save-check" id="saveCheck" checked>
+        <label class="cf-save-label" for="saveCheck">Remember credentials</label>
+      </div>
+
+      <button class="cf-connect" id="connectBtn" onclick="doConnect()">Connect</button>
+
+      <div class="cf-divider"></div>
+      <div class="cf-saved-title">Saved Sessions</div>
+      <div id="savedSessions"></div>
+    </div>
+
+    <div class="sidebar-section">VPS Info</div>
+    <div class="info-panel">
+      <div class="info-row"><span class="info-key">Container</span><span class="info-val">{{ vps.container_name }}</span></div>
+      <div class="info-row"><span class="info-key">IP Address</span><span class="info-val copy-me" onclick="copyText('{{ vps_ip or '' }}')">{{ vps_ip or 'N/A' }}</span></div>
+      <div class="info-row"><span class="info-key">RAM</span><span class="info-val">{{ vps.ram }}</span></div>
+      <div class="info-row"><span class="info-key">CPU</span><span class="info-val">{{ vps.cpu }} vCPU</span></div>
+      <div class="info-row"><span class="info-key">Disk</span><span class="info-val">{{ vps.storage }}</span></div>
+      <div class="info-row"><span class="info-key">OS</span><span class="info-val">{{ vps.os_version or '—' }}</span></div>
+      <div class="info-row"><span class="info-key">Status</span><span class="info-val" style="color:var(--accent2)">{{ vps.status }}</span></div>
+    </div>
+  </div>
+
+  <!-- TERMINAL -->
+  <div class="term-wrap">
+    <div class="term-tabs">
+      <div class="term-tab active">
+        <span id="tabLabel">Terminal · {{ vps.container_name }}</span>
+      </div>
+    </div>
+    <div id="terminal-container"></div>
+
+    <!-- disconnected overlay -->
+    <div class="dc-overlay" id="dcOverlay">
+      <div class="dc-box">
+        <div class="dc-icon">⚡</div>
+        <div class="dc-title">Ready to Connect</div>
+        <div class="dc-sub">Fill in the credentials on the left panel and hit Connect, or click below to use saved credentials.</div>
+        <button class="dc-btn" onclick="doConnect()">Quick Connect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <span class="fhint"><kbd>Ctrl+C</kbd> interrupt</span>
+  <span class="fhint"><kbd>Ctrl+Shift+V</kbd> paste</span>
+  <span class="fhint"><kbd>F11</kbd> fullscreen</span>
+  <span class="fstat" id="termSize">80×24</span>
+</div>
+
+<div class="copy-toast" id="copyToast">Copied!</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-search@0.13.0/lib/xterm-addon-search.min.js"></script>
+<script>
+(function(){
+  const VPS_ID = {{ vps.id }};
+  const STORAGE_KEY = 'vortex_sessions_' + VPS_ID;
+
+  // ── Terminal ──
+  const term = new Terminal({
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    fontSize: 14,
+    fontFamily: '"Space Mono", "Fira Code", "Cascadia Code", monospace',
+    letterSpacing: 0,
+    lineHeight: 1.25,
+    theme: {
+      background: '#0d1117',
+      foreground: '#e6edf3',
+      cursor: '#58a6ff',
+      cursorAccent: '#0d1117',
+      selectionBackground: 'rgba(88,166,255,0.2)',
+      black:   '#484f58', red:     '#ff7b72', green:  '#3fb950', yellow: '#d29922',
+      blue:    '#58a6ff', magenta: '#bc8cff', cyan:   '#39c5cf', white:  '#b1bac4',
+      brightBlack:   '#6e7681', brightRed:   '#ffa198', brightGreen: '#56d364',
+      brightYellow:  '#e3b341', brightBlue:  '#79c0ff', brightMagenta: '#d2a8ff',
+      brightCyan:    '#56d4dd', brightWhite: '#f0f6fc',
+    },
+    scrollback: 10000,
+    allowProposedApi: true,
+  });
+
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+
+  term.open(document.getElementById('terminal-container'));
+  fitAddon.fit();
+  term.focus();
+
+  function updateSizeLabel(){
+    document.getElementById('termSize').textContent = term.cols + '×' + term.rows;
+  }
+  updateSizeLabel();
+
+  window.addEventListener('resize', ()=>{
+    fitAddon.fit();
+    updateSizeLabel();
+    if(connected) socket.emit('ssh_resize',{vps_id:VPS_ID,cols:term.cols,rows:term.rows});
+  });
+
+  // ── Socket.IO ──
+  const socket = io(window.location.origin, {transports:['websocket','polling'],path:'/socket.io'});
+  let connected = false, connecting = false;
+
+  function setStatus(state, label){
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'tb-dot';
+    txt.className = 'tb-status';
+    if(state==='connected'){dot.classList.add('on');txt.classList.add('connected');txt.textContent=label||'Connected';}
+    else if(state==='connecting'){dot.classList.add('warn');txt.classList.add('connecting');txt.textContent=label||'Connecting…';}
+    else{txt.classList.add('error');txt.textContent=label||'Disconnected';}
+  }
+
+  socket.on('ssh_connected', d=>{
+    connecting=false; connected=true;
+    document.getElementById('dcOverlay').classList.add('hidden');
+    setStatus('connected','SSH '+d.username+'@'+d.host+':'+d.port);
+    document.getElementById('tabLabel').textContent='Terminal · '+d.username+'@'+d.host;
+    term.clear();
+    term.focus();
+    fitAddon.fit();
+    socket.emit('ssh_resize',{vps_id:VPS_ID,cols:term.cols,rows:term.rows});
+  });
+
+  socket.on('ssh_output', data=>term.write(data));
+
+  socket.on('ssh_error', err=>{
+    connecting=false; connected=false;
+    setStatus('disconnected','Error');
+    document.getElementById('dcOverlay').classList.remove('hidden');
+    term.write('\r\n\x1b[1;31m── SSH ERROR ──\x1b[0m\r\n');
+    term.write('\x1b[31m'+((err||{}).error||'Connection failed')+'\x1b[0m\r\n\r\n');
+    resetConnBtn();
+  });
+
+  socket.on('ssh_disconnected', ()=>{
+    connected=false; connecting=false;
+    setStatus('disconnected','Disconnected');
+    document.getElementById('dcOverlay').classList.remove('hidden');
+    term.write('\r\n\x1b[33m── Session ended ──\x1b[0m\r\n');
+    resetConnBtn();
+  });
+
+  socket.on('disconnect', ()=>{
+    if(connected){ connected=false; term.write('\r\n\x1b[31m[!] Panel connection lost\x1b[0m\r\n'); }
+    setStatus('disconnected','Panel offline');
+  });
+
+  // ── Input ──
+  term.onData(d=>{ if(connected) socket.emit('ssh_input',{vps_id:VPS_ID,input:d}); });
+
+  // ── Connect button ──
+  function doConnect(){
+    if(connecting) return;
+    const host = document.getElementById('cfHost').value.trim();
+    const port = parseInt(document.getElementById('cfPort').value,10)||22;
+    const user = document.getElementById('cfUser').value.trim()||'root';
+    const pass = document.getElementById('cfPass').value;
+    if(!host){alert('Enter the VPS IP address.');return;}
+    if(!pass){alert('Enter the SSH password.');return;}
+    if(connected) socket.emit('ssh_disconnect',{vps_id:VPS_ID});
+    connecting=true; connected=false;
+    setStatus('connecting');
+    document.getElementById('dcOverlay').classList.add('hidden');
+    const btn=document.getElementById('connectBtn');
+    btn.disabled=true; btn.classList.add('spinner-active');
+    term.clear();
+    term.write('\x1b[36m── Connecting to '+user+'@'+host+':'+port+' ──\x1b[0m\r\n');
+    socket.emit('ssh_connect',{vps_id:VPS_ID,host,port,username:user,password:pass});
+    if(document.getElementById('saveCheck').checked) saveSession(host,port,user);
+  }
+  window.doConnect = doConnect;
+
+  function resetConnBtn(){
+    const btn=document.getElementById('connectBtn');
+    btn.disabled=false; btn.classList.remove('spinner-active');
+  }
+
+  // ── Saved sessions ──
+  function saveSession(host,port,user){
+    let sessions = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    sessions = sessions.filter(s=>!(s.host===host&&s.port===port&&s.user===user));
+    sessions.unshift({host,port,user,ts:Date.now()});
+    sessions = sessions.slice(0,5);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(sessions));
+    renderSessions();
+  }
+
+  function renderSessions(){
+    const sessions = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    const el = document.getElementById('savedSessions');
+    el.innerHTML='';
+    sessions.forEach(s=>{
+      const d=document.createElement('div');
+      d.className='cf-saved-item';
+      d.innerHTML='<div class="si-host">'+s.host+':'+s.port+'</div><div class="si-user">'+s.user+'</div>';
+      d.onclick=()=>{
+        document.getElementById('cfHost').value=s.host;
+        document.getElementById('cfPort').value=s.port;
+        document.getElementById('cfUser').value=s.user;
+        document.getElementById('cfPass').focus();
+      };
+      el.appendChild(d);
+    });
+  }
+  renderSessions();
+
+  // ── Sidebar toggle ──
+  window.toggleSidebar=function(){
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    setTimeout(()=>{ fitAddon.fit(); updateSizeLabel(); }, 300);
+  };
+
+  // ── Clear ──
+  window.clearTerm=function(){ term.clear(); };
+
+  // ── Fullscreen ──
+  window.toggleFullscreen=function(){
+    if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  // ── Exit ──
+  window.exitConsole=function(){
+    if(connected) socket.emit('ssh_disconnect',{vps_id:VPS_ID});
+    window.location.href='/vps/'+VPS_ID;
+  };
+
+  // ── Copy helper ──
+  window.copyText=function(t){
+    navigator.clipboard.writeText(t).then(()=>{
+      const toast=document.getElementById('copyToast');
+      toast.classList.add('show');
+      setTimeout(()=>toast.classList.remove('show'),1800);
+    });
+  };
+
+  // ── Keyboard shortcuts ──
+  document.addEventListener('keydown',e=>{
+    if(e.key==='F11'){e.preventDefault();toggleFullscreen();}
+    if(e.ctrlKey&&e.shiftKey&&e.key==='V'){
+      e.preventDefault();
+      navigator.clipboard.readText().then(t=>{
+        if(connected&&t) socket.emit('ssh_input',{vps_id:VPS_ID,input:t});
+      }).catch(()=>{});
+    }
+  });
+
+  // ── Paste on right-click in terminal ──
+  document.getElementById('terminal-container').addEventListener('contextmenu',e=>{
+    if(!connected) return;
+    e.preventDefault();
+    navigator.clipboard.readText().then(t=>{
+      if(t) socket.emit('ssh_input',{vps_id:VPS_ID,input:t});
+    }).catch(()=>{});
+  });
+
+  document.getElementById('cfPass').addEventListener('keypress',e=>{
+    if(e.key==='Enter') doConnect();
+  });
+
+  window.addEventListener('beforeunload',()=>{
+    if(connected) socket.emit('ssh_disconnect',{vps_id:VPS_ID});
+  });
+
+  setStatus('disconnected','Awaiting connection');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ ticket.id }} - {{ panel_name }}{% endblock %}
+{% block header_title %}Ticket #{{ ticket.id }}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}" class="breadcrumb-item">Dashboard</a>
+  <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+  <a href="{{ url_for('tickets_list') }}" class="breadcrumb-item">Tickets</a>
+  <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+  <span class="breadcrumb-item active">#{{ ticket.id }}</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+  <div>
+    <h2 style="font-size:1.1rem;margin-bottom:.3rem">{{ ticket.subject }}</h2>
+    <div style="font-size:.78rem;color:var(--text-muted)">Opened {{ ticket.created_at[:16].replace('T',' ') }}</div>
+  </div>
+  <div style="display:flex;gap:.5rem;align-items:center">
+    <span style="font-size:.75rem;padding:.25rem .8rem;border-radius:20px;background:{% if ticket.status=='open' %}rgba(16,185,129,.15){% else %}rgba(107,114,128,.15){% endif %};color:{% if ticket.status=='open' %}var(--accent-success){% else %}var(--text-muted){% endif %};font-weight:600">{{ ticket.status|upper }}</span>
+    {% if ticket.status == 'open' %}
+    <button class="btn btn-sm btn-outline" onclick="closeTicket()"><i class="fas fa-check"></i> Close</button>
+    {% endif %}
+  </div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.5rem">
+  {% for msg in messages %}
+  <div class="card" style="padding:1.25rem 1.5rem;{% if msg.is_admin_reply %}border-left:3px solid var(--accent-primary){% endif %}">
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
+      <div style="width:28px;height:28px;border-radius:8px;background:{% if msg.is_admin_reply %}var(--accent-primary){% else %}var(--bg-elevated){% endif %};display:flex;align-items:center;justify-content:center;font-size:.75rem;color:white;font-weight:700">
+        {{ msg.username[0]|upper }}
+      </div>
+      <span style="font-weight:600;font-size:.875rem">{{ msg.username }}{% if msg.is_admin_reply %} <span style="font-size:.7rem;color:var(--accent-primary);font-weight:400">(Support)</span>{% endif %}</span>
+      <span style="font-size:.72rem;color:var(--text-muted);margin-left:auto">{{ msg.created_at[:16].replace('T',' ') }}</span>
+    </div>
+    <p style="color:var(--text-secondary);font-size:.875rem;white-space:pre-wrap">{{ msg.message }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% if ticket.status == 'open' %}
+<div class="card" style="padding:1.5rem">
+  <h3 style="font-size:1rem;margin-bottom:1rem">Reply</h3>
+  <textarea id="replyMsg" rows="4" placeholder="Write your reply..." style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.75rem 1rem;color:var(--text-primary);resize:vertical;margin-bottom:1rem"></textarea>
+  {% if current_user.is_admin %}
+  <div style="margin-bottom:1rem">
+    <label style="font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem;display:block">Update Status</label>
+    <select id="replyStatus" style="background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.5rem 1rem;color:var(--text-primary)">
+      <option value="open">Keep Open</option><option value="resolved">Resolved</option><option value="closed">Close</option>
+    </select>
+  </div>
+  {% endif %}
+  <button class="btn btn-primary" onclick="sendReply()"><i class="fas fa-paper-plane"></i> Send Reply</button>
+</div>
+{% endif %}
+<script>
+async function sendReply(){
+  const m=document.getElementById('replyMsg').value.trim();
+  if(!m){alert('Write a message');return;}
+  const status=document.getElementById('replyStatus')?.value||'open';
+  const r=await fetch('/tickets/{{ ticket.id }}/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,status})});
+  const d=await r.json();
+  if(d.success)location.reload();else alert(d.error||'Failed');
+}
+async function closeTicket(){
+  if(!confirm('Close this ticket?'))return;
+  const r=await fetch('/tickets/{{ ticket.id }}/close',{method:'POST'});
+  const d=await r.json();
+  if(d.success)location.reload();
+}
+</script>
+{% endblock %}

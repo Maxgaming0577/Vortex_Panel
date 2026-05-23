@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Support Tickets - {{ panel_name }}{% endblock %}
+{% block header_title %}Support Tickets{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumb">
+  <a href="{{ url_for('dashboard') }}" class="breadcrumb-item">Dashboard</a>
+  <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+  <span class="breadcrumb-item active">Tickets</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <h2 style="font-size:1.2rem;margin-bottom:.25rem"><i class="fas fa-ticket-alt" style="color:var(--accent-info)"></i> Support Tickets</h2>
+      <p style="color:var(--text-muted);font-size:.875rem">Get help from our support team</p>
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('newModal').style.display='flex'">
+      <i class="fas fa-plus"></i> New Ticket
+    </button>
+  </div>
+</div>
+
+{% if tickets %}
+<div style="display:flex;flex-direction:column;gap:.75rem">
+  {% for t in tickets %}
+  <a href="{{ url_for('ticket_detail', ticket_id=t.id) }}" style="text-decoration:none">
+  <div class="card" style="padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;transition:border-color .2s;border:1px solid var(--card-border)" onmouseover="this.style.borderColor='var(--accent-primary)'" onmouseout="this.style.borderColor='var(--card-border)'">
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+        background:{% if t.status=='open' %}rgba(59,130,246,.15){% elif t.status=='closed' %}rgba(107,114,128,.15){% else %}rgba(245,158,11,.15){% endif %};
+        color:{% if t.status=='open' %}var(--accent-primary){% elif t.status=='closed' %}var(--text-muted){% else %}var(--accent-warning){% endif %}">
+        <i class="fas fa-ticket-alt"></i>
+      </div>
+      <div>
+        <div style="font-weight:600;color:var(--text-primary)">#{{ t.id }} — {{ t.subject }}</div>
+        <div style="font-size:.72rem;color:var(--text-muted)">{{ t.updated_at[:16].replace('T',' ') }}{% if current_user.is_admin %} &nbsp;·&nbsp; {{ t.username }}{% endif %}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <span style="font-size:.72rem;padding:.2rem .7rem;border-radius:20px;font-weight:600;
+        background:{% if t.priority=='high' %}rgba(239,68,68,.15){% elif t.priority=='low' %}rgba(107,114,128,.15){% else %}rgba(245,158,11,.15){% endif %};
+        color:{% if t.priority=='high' %}var(--accent-danger){% elif t.priority=='low' %}var(--text-muted){% else %}var(--accent-warning){% endif %}">
+        {{ t.priority|upper }}
+      </span>
+      <span style="font-size:.72rem;padding:.2rem .7rem;border-radius:20px;font-weight:600;
+        background:{% if t.status=='open' %}rgba(16,185,129,.15){% elif t.status=='closed' %}rgba(107,114,128,.15){% else %}rgba(245,158,11,.15){% endif %};
+        color:{% if t.status=='open' %}var(--accent-success){% elif t.status=='closed' %}var(--text-muted){% else %}var(--accent-warning){% endif %}">
+        {{ t.status|upper }}
+      </span>
+    </div>
+  </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:3rem">
+  <i class="fas fa-ticket-alt" style="font-size:2.5rem;color:var(--text-muted);margin-bottom:1rem;display:block"></i>
+  <p style="color:var(--text-muted)">No tickets yet. Open one if you need help.</p>
+</div>
+{% endif %}
+
+<div id="newModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+  <div class="card" style="width:100%;max-width:480px;padding:2rem">
+    <h3 style="margin-bottom:1.5rem"><i class="fas fa-plus"></i> New Ticket</h3>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Subject</label>
+      <input id="tSubject" type="text" placeholder="Brief description of your issue" style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+    </div>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Priority</label>
+      <select id="tPriority" style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary)">
+        <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>
+      </select>
+    </div>
+    <div style="margin-bottom:1.5rem">
+      <label style="display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:.4rem">Message</label>
+      <textarea id="tMessage" rows="4" placeholder="Describe your issue in detail..." style="width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;padding:.6rem 1rem;color:var(--text-primary);resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:.75rem">
+      <button class="btn btn-primary" style="flex:1" onclick="submitTicket()">Submit</button>
+      <button class="btn btn-outline" onclick="document.getElementById('newModal').style.display='none'">Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+async function submitTicket(){
+  const s=document.getElementById('tSubject').value.trim();
+  const p=document.getElementById('tPriority').value;
+  const m=document.getElementById('tMessage').value.trim();
+  if(!s||!m){alert('Fill in subject and message');return;}
+  const r=await fetch('/tickets/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:s,priority:p,message:m})});
+  const d=await r.json();
+  if(d.success){window.location.href='/tickets/'+d.ticket_id;}else{alert(d.error||'Failed');}
+}
+</script>
+{% endblock %}
